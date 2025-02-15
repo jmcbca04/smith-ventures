@@ -60,20 +60,6 @@ export function MobileMenu() {
       >
         <nav className="container mx-auto px-4 py-4 flex flex-col space-y-4">
           <Link 
-            href="/about" 
-            className="text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors"
-            onClick={() => setIsOpen(false)}
-          >
-            About
-          </Link>
-          <Link 
-            href="/how-it-works" 
-            className="text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors"
-            onClick={() => setIsOpen(false)}
-          >
-            How it Works
-          </Link>
-          <Link 
             href="/submit"
             onClick={() => setIsOpen(false)}
           >

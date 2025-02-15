@@ -16,6 +16,7 @@
 - [x] API routes implementation
 - [x] OpenAI integration
 - [x] VC personas configuration
+- [x] Managing Partner voting system
 - [ ] Rate limiting implementation
 - [ ] Error handling improvements
 - [x] Loading states and animations
@@ -25,9 +26,9 @@
 
 - [x] Mobile responsiveness optimization
 - [ ] Dark mode support
-- [ ] Loading skeletons
+- [x] Loading skeletons
 - [ ] Error boundaries
-- [ ] Toast notifications styling
+- [x] Toast notifications styling
 - [x] Transition animations
 - [ ] Accessibility improvements
 - [ ] SEO optimization
@@ -88,3 +89,6 @@
 - 2024-02-15: Updated hero section layout and imagery
 - 2024-02-15: Simplified footer structure
 - 2024-02-15: Improved mobile menu animations
+- 2024-02-15: Added Managing Partner voting system with double vote weight
+- 2024-02-15: Simplified navigation by removing unused routes
+- 2024-02-15: Enhanced proposal evaluation results UI

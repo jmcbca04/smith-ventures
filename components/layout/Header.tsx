@@ -12,15 +12,9 @@ export function Header() {
               Smith Ventures
             </Link>
           </div>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/about" className="text-sm font-medium text-neutral-600 hover:text-neutral-900">
-              About
-            </Link>
-            <Link href="/how-it-works" className="text-sm font-medium text-neutral-600 hover:text-neutral-900">
-              How it Works
-            </Link>
+          <nav className="hidden md:flex items-center">
             <Link href="/submit">
-              <Button>Submit Proposal</Button>
+              <Button>Submit Your Deal</Button>
             </Link>
           </nav>
           <MobileMenu />
