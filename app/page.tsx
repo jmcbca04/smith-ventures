@@ -1,77 +1,71 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-
-export default function Home() {
-  return (
-    <div className="container mx-auto px-4 py-16">
-      <div className="mx-auto max-w-2xl text-center">
-        <h1 className="text-4xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
-          Get Your Startup Evaluated by AI VCs
-        </h1>
-        <p className="mt-6 text-lg leading-8 text-neutral-600">
-          Submit your pitch anonymously and receive feedback from multiple AI-powered VC partners,
-          each with their own investment philosophy and expertise.
-        </p>
-        <div className="mt-10 flex items-center justify-center gap-x-6">
-          <Link href="/submit">
-            <Button size="lg">
-              Submit Your Pitch
-            </Button>
-          </Link>
-          <Link href="/about">
-            <Button variant="outline" size="lg">
-              Learn More
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-        {features.map((feature) => (
-          <div
-            key={feature.name}
-            className="rounded-lg border border-neutral-200 bg-white p-8 shadow-sm"
-          >
-            <h3 className="text-lg font-semibold text-neutral-900">
-              {feature.name}
-            </h3>
-            <p className="mt-2 text-sm text-neutral-600">{feature.description}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { Hero } from "@/components/layout/Hero";
 
 const features = [
   {
-    name: 'Anonymous Submissions',
+    name: "Multiple AI VC Personas",
     description:
-      'Submit your startup pitch without creating an account. Get a unique link to view your results.',
+      "Get feedback from five distinct AI VCs, each modeled after famous investors with unique investment philosophies.",
   },
   {
-    name: 'Multiple VC Perspectives',
+    name: "Anonymous Submissions",
     description:
-      'Each proposal is evaluated by 5 AI VCs with different investment philosophies and areas of expertise.',
+      "Submit your pitch anonymously and receive unbiased feedback without creating an account.",
   },
   {
-    name: 'Detailed Feedback',
+    name: "Instant Feedback",
     description:
-      'Receive comprehensive feedback including investment decisions, reasoning, and potential concerns.',
+      "Receive detailed investment decisions, reasoning, and key points within minutes.",
   },
   {
-    name: 'Instant Results',
+    name: "Comprehensive Analysis",
     description:
-      'Get your results within minutes, with each VC providing their unique insights and analysis.',
+      "Each VC provides a detailed analysis including investment thesis, confidence score, and key points.",
   },
   {
-    name: 'Private & Secure',
+    name: "Private Results",
     description:
-      'Your pitch remains private and can only be accessed through your unique link.',
+      "Access your results through a private link that you can optionally share with others.",
   },
   {
-    name: 'Share Results',
+    name: "No Cost",
     description:
-      'Optionally share your results with others using your private proposal link.',
+      "Evaluate your startup for free and get valuable insights from multiple perspectives.",
   },
 ];
+
+export default function Home() {
+  return (
+    <>
+      <Hero />
+      <section className="bg-white py-24">
+        <div className="container mx-auto px-4">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-neutral-900 sm:text-4xl">
+              Everything you need to evaluate your startup
+            </h2>
+            <p className="mt-6 text-lg leading-8 text-neutral-600">
+              Get comprehensive feedback from multiple AI VCs, each with their own investment philosophy and expertise.
+            </p>
+          </div>
+          <div className="mx-auto mt-16 max-w-7xl">
+            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+              {features.map((feature) => (
+                <div
+                  key={feature.name}
+                  className="rounded-xl border border-neutral-200 bg-white p-8 shadow-sm transition-all hover:shadow-md"
+                >
+                  <h3 className="text-lg font-semibold text-neutral-900">
+                    {feature.name}
+                  </h3>
+                  <p className="mt-2 text-sm text-neutral-600">{feature.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
