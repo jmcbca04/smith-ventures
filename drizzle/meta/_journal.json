@@ -1,0 +1,13 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1739652513317,
+      "tag": "0000_pale_maelstrom",
+      "breakpoints": true
+    }
+  ]
+}
