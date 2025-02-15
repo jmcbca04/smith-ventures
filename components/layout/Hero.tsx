@@ -16,17 +16,14 @@ export function Hero() {
       <div className="mx-auto max-w-7xl px-6 py-12 sm:py-16 lg:flex lg:flex-col lg:px-8 lg:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-4xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
-            Get your startup evaluated by AI VCs
+            The VC Firm where your partners are AI Agents
           </h1>
           <p className="mt-6 text-lg leading-8 text-neutral-600">
-            Submit your pitch to our panel of AI venture capitalists, each with distinct investment philosophies modeled after famous VCs. Get detailed feedback and investment decisions in minutes.
+            You're a partner at Smith Ventures, along with your Agent Partners - each with distinct investment philosophies modeled after famous VCs. Bring a deal to the table, and see if your deal gets funded after everyone has voted.
           </p>
-          <div className="mt-10 flex items-center justify-center gap-x-6">
+          <div className="mt-10 flex items-center justify-center">
             <Link href="/submit">
-              <Button size="lg">Submit Your Pitch</Button>
-            </Link>
-            <Link href="/how-it-works" className="text-sm font-semibold leading-6 text-neutral-900">
-              Learn more <span aria-hidden="true">→</span>
+              <Button size="lg">Submit Your Deal</Button>
             </Link>
           </div>
         </div>

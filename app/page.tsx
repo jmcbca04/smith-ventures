@@ -43,7 +43,7 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold tracking-tight text-neutral-900 sm:text-4xl">
-              Everything you need to evaluate your startup
+              The VC Firm of the Future
             </h2>
             <p className="mt-6 text-lg leading-8 text-neutral-600">
               Get comprehensive feedback from multiple AI VCs, each with their own investment philosophy and expertise.

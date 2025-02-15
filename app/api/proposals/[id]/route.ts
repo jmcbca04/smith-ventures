@@ -34,11 +34,11 @@ export async function GET(
     const votesWithDetails = votes.map(vote => {
       const vcPersona = vcPersonas.find(vc => vc.id === vote.vcPersona);
       return {
-        ...vote,
         vcName: vcPersona?.name,
         modeledAfter: vcPersona?.modeledAfter,
-        focus: vcPersona?.focus,
-        investmentStyle: vcPersona?.investmentStyle,
+        vote: vote.vote,
+        reasoning: vote.reasoning,
+        metadata: vote.metadata,
       };
     });
 
