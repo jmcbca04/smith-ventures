@@ -1,25 +1,21 @@
-import { pgTable, text, timestamp, boolean, json } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const proposals = pgTable('proposals', {
   id: text('id').primaryKey(), // UUID
-  startupName: text('startup_name').notNull(),
-  pitch: text('pitch').notNull(),
-  createdAt: timestamp('created_at').default(sql`NOW()`).notNull(),
+  encrypted_data: text('encrypted_data').notNull(), // Base64 encrypted data
+  iv: text('iv').notNull(), // Initialization vector for decryption
+  created_at: timestamp('created_at').default(sql`NOW()`).notNull(),
   status: text('status').default('pending').notNull(), // pending, completed
-  isArchived: boolean('is_archived').default(false).notNull(),
+  is_archived: boolean('is_archived').default(false).notNull(),
 });
 
 export const vcVotes = pgTable('vc_votes', {
   id: text('id').primaryKey(), // UUID
-  proposalId: text('proposal_id').references(() => proposals.id).notNull(),
-  vcPersona: text('vc_persona').notNull(), // The VC's name/identifier
-  vote: boolean('vote').notNull(), // true = yes, false = no
-  reasoning: text('reasoning').notNull(),
-  createdAt: timestamp('created_at').default(sql`NOW()`).notNull(),
-  metadata: json('metadata').$type<{
-    confidence: number;
-    keyPoints: string[];
-    investmentThesis?: string;
-  }>(),
+  proposal_id: text('proposal_id').references(() => proposals.id).notNull(),
+  encrypted_data: text('encrypted_data').notNull(), // Base64 encrypted data
+  iv: text('iv').notNull(), // Initialization vector for decryption
+  encrypted_metadata: text('encrypted_metadata').notNull(), // Base64 encrypted metadata
+  metadata_iv: text('metadata_iv').notNull(), // IV for metadata decryption
+  created_at: timestamp('created_at').default(sql`NOW()`).notNull(),
 }); 

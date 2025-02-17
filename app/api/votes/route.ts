@@ -2,32 +2,36 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '@/db';
-import { proposals } from '@/db/schema';
-import { EncryptedData } from '@/lib/encryption';
+import { vcVotes } from '@/db/schema';
 
-const proposalSchema = z.object({
+const voteSchema = z.object({
+  proposal_id: z.string().uuid(),
   encrypted_data: z.string(),
   iv: z.string(),
+  encrypted_metadata: z.string(),
+  metadata_iv: z.string(),
 });
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { encrypted_data, iv } = proposalSchema.parse(body);
+    const { proposal_id, encrypted_data, iv, encrypted_metadata, metadata_iv } = voteSchema.parse(body);
 
-    const proposalId = uuidv4();
+    const vote_id = uuidv4();
     
-    await db.insert(proposals).values({
-      id: proposalId,
+    await db.insert(vcVotes).values({
+      id: vote_id,
+      proposal_id,
       encrypted_data,
       iv,
-      status: 'pending',
+      encrypted_metadata,
+      metadata_iv,
     });
 
     return NextResponse.json({ 
       success: true, 
-      proposalId,
-      message: 'Proposal submitted successfully' 
+      vote_id,
+      message: 'Vote submitted successfully' 
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -37,7 +41,7 @@ export async function POST(request: Request) {
       );
     }
 
-    console.error('Proposal submission error:', error);
+    console.error('Vote submission error:', error);
     return NextResponse.json(
       { success: false, message: 'Internal server error' },
       { status: 500 }

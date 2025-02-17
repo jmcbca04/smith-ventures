@@ -1,88 +1,338 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import { EncryptionService, parseAccessToken, importKey, decryptData } from '@/lib/client/encryption';
+import type { ProposalData, VCVoteData } from '@/types/encryption';
 
-interface VCVote {
-  vcName: string;
-  modeledAfter: string;
-  vote: boolean;
-  reasoning: string;
+interface RawVote {
+  id: string;
+  encrypted_data: string;
+  iv: string;
+  encrypted_metadata: string;
+  metadata_iv: string;
+  created_at: string;
+}
+
+interface DecryptedVote {
+  id: string;
+  vote: VCVoteData;
   metadata: {
     confidence: number;
-    keyPoints: string[];
-    investmentThesis?: string;
+    key_points: string[];
+    investment_thesis?: string;
   };
 }
 
-interface Proposal {
-  id: string;
-  startupName: string;
-  pitch: string;
-  status: string;
-  createdAt: string;
+interface APIResponse {
+  success: boolean;
+  proposal: {
+    id: string;
+    encrypted_data: string;
+    iv: string;
+    status: string;
+    created_at: string;
+  };
+  votes: RawVote[];
 }
 
-export default function ProposalPage({ params }: { params: { id: string } }) {
+export default function ProposalPage() {
   const router = useRouter();
-  const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [votes, setVotes] = useState<VCVote[]>([]);
+  const params = useParams();
+  console.log('Raw params:', params);
+  
+  // Extract and validate the proposal ID
+  const proposalId = typeof params?.id === 'string' && params.id !== 'undefined' 
+    ? params.id 
+    : null;
+  
+  console.log('Extracted proposalId:', proposalId);
+
+  const [proposal, setProposal] = useState<ProposalData | null>(null);
+  const [votes, setVotes] = useState<DecryptedVote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [decryptedVotes, setDecryptedVotes] = useState<DecryptedVote[]>([]);
   const [managerVote, setManagerVote] = useState<boolean | null>(null);
   const [managerReasoning, setManagerReasoning] = useState('');
   const [isSubmittingManagerVote, setIsSubmittingManagerVote] = useState(false);
+  const [accessToken, setAccessToken] = useState<string>('');
+  const [needsToken, setNeedsToken] = useState(false);
 
   useEffect(() => {
+    console.log('useEffect triggered with proposalId:', proposalId);
+    if (!proposalId) {
+      console.error('No valid proposal ID found, redirecting to home');
+      setIsLoading(false);
+      setNeedsToken(false);
+      router.push('/');
+      return;
+    }
+    console.log('Initializing with proposal ID:', proposalId);
     fetchProposal();
-  }, [params.id]);
+  }, [proposalId, router]);
 
   const fetchProposal = async () => {
     try {
-      const response = await fetch(`/api/proposals/${params.id}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to fetch proposal');
+      if (!proposalId) {
+        console.error('No valid proposal ID provided in fetchProposal');
+        setIsLoading(false);
+        setNeedsToken(false);
+        return;
       }
 
-      setProposal(data.proposal);
-      setVotes(data.votes || []);
+      console.log('Fetching proposal data for ID:', proposalId);
+      const encryptionService = EncryptionService.getInstance();
+      console.log('Got encryption service instance');
+      const existingToken = encryptionService.getToken(proposalId);
+      console.log('Existing token for proposal:', existingToken ? 'Found' : 'Not found');
+
+      if (!existingToken) {
+        console.log('No token found for ID:', proposalId);
+        setNeedsToken(true);
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await fetch(`/api/proposals/${proposalId}`, {
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'If-None-Match': new Date().getTime().toString()
+        }
+      });
+      const data = (await response.json()) as APIResponse;
+      
+      if (!data.proposal) {
+        console.error('No proposal data returned');
+        setIsLoading(false);
+        return;
+      }
+
+      // Decrypt proposal and votes if completed
+      if (data.proposal.status === 'completed' && data.votes.length > 0) {
+        const { key } = parseAccessToken(existingToken);
+        const cryptoKey = await importKey(key);
+        
+        // Decrypt votes and metadata
+        const decryptedVotes: DecryptedVote[] = await Promise.all(
+          data.votes.map(async (vote: RawVote) => {
+            const voteData = await decryptData({ encrypted_data: vote.encrypted_data, iv: vote.iv }, cryptoKey);
+            const metadata = await decryptData({ encrypted_data: vote.encrypted_metadata, iv: vote.metadata_iv }, cryptoKey);
+            return {
+              id: vote.id,
+              vote: JSON.parse(voteData) as VCVoteData,
+              metadata: JSON.parse(metadata)
+            };
+          })
+        );
+
+        setVotes(decryptedVotes);
+        
+        // Decrypt proposal data
+        const proposalData = await decryptData({ 
+          encrypted_data: data.proposal.encrypted_data, 
+          iv: data.proposal.iv 
+        }, cryptoKey);
+        
+        setProposal({
+          startup_name: 'Test Startup', // Temporary for testing
+          pitch: 'Test pitch', // Temporary for testing
+          status: data.proposal.status,
+          created_at: data.proposal.created_at,
+        } as ProposalData);
+      } else {
+        // Just set the encrypted proposal for now
+        setProposal({
+          id: data.proposal.id,
+          status: data.proposal.status,
+          created_at: data.proposal.created_at,
+          encrypted_data: data.proposal.encrypted_data,
+          iv: data.proposal.iv
+        } as unknown as ProposalData);
+      }
+
       setIsLoading(false);
     } catch (error) {
-      toast.error('Failed to load proposal');
-      router.push('/');
+      console.error('Failed to load proposal:', error);
+      if (error instanceof Error && error.message === 'No access token found for this proposal') {
+        setNeedsToken(true);
+      } else {
+        toast.error('Failed to load proposal');
+      }
+      setIsLoading(false);
+    }
+  };
+
+  const handleTokenSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!proposalId) {
+      toast.error('Invalid proposal ID');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const encryptionService = EncryptionService.getInstance();
+      // Store the token first
+      encryptionService.storeToken(proposalId, accessToken);
+      
+      // Then try to fetch the proposal
+      const data = await encryptionService.getProposal(proposalId);
+      setProposal(data.proposal);
+      setVotes(data.votes);
+      setNeedsToken(false);
+    } catch (error) {
+      toast.error('Invalid access token');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const startEvaluation = async () => {
-    setIsEvaluating(true);
-    try {
-      const response = await fetch(`/api/proposals/${params.id}/evaluate`, {
-        method: 'POST',
-      });
-      const data = await response.json();
+    if (!proposalId) {
+      toast.error('Invalid proposal ID');
+      return;
+    }
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Evaluation failed');
+    setIsEvaluating(true);
+    setVotes([]);
+    
+    try {
+      console.log('Starting evaluation process...');
+      
+      // Get the access token
+      const encryptionService = EncryptionService.getInstance();
+      const token = encryptionService.getToken(proposalId);
+      
+      if (!token) {
+        throw new Error('No access token found for this proposal');
+      }
+      
+      // Start the evaluation
+      const evalResponse = await fetch(`/api/proposals/${proposalId}/evaluate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        body: JSON.stringify({ accessToken: token })
+      });
+      
+      if (!evalResponse.ok) {
+        throw new Error('Failed to start evaluation');
+      }
+      
+      const evalResult = await evalResponse.json();
+      console.log('Evaluation request completed:', evalResult);
+      
+      if (!evalResult.success) {
+        throw new Error(evalResult.message || 'Evaluation failed');
       }
 
-      setVotes(data.evaluations);
-      setProposal(prev => prev ? { ...prev, status: 'completed' } : null);
-      toast.success('Evaluation completed!');
+      // Wait for a short delay to ensure database changes are propagated
+      console.log('Waiting for database updates to complete...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Try up to 3 times to get the votes
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        console.log(`Attempt ${attempt}/3: Fetching evaluation results...`);
+        try {
+          const response = await fetch(`/api/proposals/${proposalId}`, {
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+              'If-None-Match': new Date().getTime().toString()
+            }
+          });
+          const data = (await response.json()) as APIResponse;
+          
+          console.log('Raw API response:', {
+            hasProposal: !!data.proposal,
+            proposalStatus: data.proposal?.status,
+            numVotes: data.votes?.length,
+          });
+
+          // Check both the status and votes
+          if (data.proposal.status === 'completed' && data.votes.length > 0) {
+            console.log('Valid votes found, decrypting...');
+            
+            // Decrypt votes using the access token
+            const { key } = parseAccessToken(token);
+            const cryptoKey = await importKey(key);
+            
+            const decryptedVotes: DecryptedVote[] = await Promise.all(
+              data.votes.map(async (vote: RawVote) => {
+                const voteData = await decryptData(
+                  { encrypted_data: vote.encrypted_data, iv: vote.iv },
+                  cryptoKey
+                );
+                const metadata = await decryptData(
+                  { encrypted_data: vote.encrypted_metadata, iv: vote.metadata_iv },
+                  cryptoKey
+                );
+                return {
+                  id: vote.id,
+                  vote: JSON.parse(voteData) as VCVoteData,
+                  metadata: JSON.parse(metadata)
+                };
+              })
+            );
+
+            console.log('Votes decrypted successfully:', decryptedVotes.length);
+            setVotes(decryptedVotes);
+            
+            // Set proposal data
+            const proposalData = await decryptData(
+              { encrypted_data: data.proposal.encrypted_data, iv: data.proposal.iv },
+              cryptoKey
+            );
+            setProposal({
+              ...JSON.parse(proposalData),
+              status: data.proposal.status,
+              created_at: data.proposal.created_at,
+            } as ProposalData);
+            
+            setIsEvaluating(false);
+            toast.success('Evaluation completed successfully!');
+            return;
+          }
+
+          if (attempt === 3) {
+            throw new Error('Failed to get valid evaluation results after multiple attempts');
+          }
+
+          console.log(`No valid votes found in attempt ${attempt}/3, waiting before retry...`);
+          const delay = Math.min(2000 * Math.pow(1.5, attempt - 1), 5000);
+          console.log(`Waiting ${Math.round(delay)}ms before next attempt...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } catch (error) {
+          console.error(`Error in attempt ${attempt}/3:`, error);
+          if (attempt === 3) throw error;
+          const delay = Math.min(2000 * Math.pow(1.5, attempt - 1), 5000);
+          console.log(`Error occurred, waiting ${Math.round(delay)}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+
+      throw new Error('Failed to get valid evaluation results after multiple attempts');
     } catch (error) {
+      console.error('Evaluation failed:', error);
       toast.error('Failed to complete evaluation');
-    } finally {
       setIsEvaluating(false);
     }
   };
 
   // Calculate final vote count including manager's double vote
   const getVoteResults = () => {
-    const aiVoteCount = votes.filter(v => v.vote).length;
+    const aiVoteCount = votes.filter(v => v.vote.vote).length;
     const totalVotes = votes.length + (managerVote !== null ? 2 : 0); // Manager vote counts as 2
     const yesVotes = aiVoteCount + (managerVote ? 2 : 0);
     return {
@@ -97,6 +347,33 @@ export default function ProposalPage({ params }: { params: { id: string } }) {
       <div className="container mx-auto px-4 py-16">
         <div className="mx-auto max-w-3xl text-center">
           <p>Loading proposal...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (needsToken) {
+    return (
+      <div className="container mx-auto px-4 py-16">
+        <div className="mx-auto max-w-md">
+          <h1 className="text-2xl font-bold text-center mb-8">Enter Access Token</h1>
+          <form onSubmit={handleTokenSubmit} className="space-y-4">
+            <div>
+              <Input
+                type="text"
+                placeholder="Paste your access token here"
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <Button type="submit" className="w-full">
+              Access Proposal
+            </Button>
+            <p className="text-sm text-neutral-500 text-center">
+              You need an access token to view this proposal. The token was provided when the proposal was submitted.
+            </p>
+          </form>
         </div>
       </div>
     );
@@ -121,11 +398,13 @@ export default function ProposalPage({ params }: { params: { id: string } }) {
       <div className="mx-auto max-w-3xl">
         <div className="mb-12">
           <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
-            {proposal.startupName}
+            {proposal.startup_name}
           </h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            Submitted on {formatDate(new Date(proposal.createdAt))}
-          </p>
+          {proposal.created_at && (
+            <p className="mt-2 text-sm text-neutral-500">
+              Submitted on {formatDate(new Date(proposal.created_at))}
+            </p>
+          )}
           <div className="mt-6 rounded-lg border border-neutral-200 bg-white p-6">
             <h2 className="text-lg font-semibold">Pitch</h2>
             <p className="mt-2 whitespace-pre-wrap text-neutral-600">
@@ -134,7 +413,7 @@ export default function ProposalPage({ params }: { params: { id: string } }) {
           </div>
         </div>
 
-        {proposal.status === 'pending' ? (
+        {votes.length === 0 ? (
           <div className="text-center">
             <h2 className="text-xl font-semibold">Ready for Evaluation</h2>
             <p className="mt-2 text-neutral-600">
@@ -215,93 +494,48 @@ export default function ProposalPage({ params }: { params: { id: string } }) {
                 )}
               </>
             )}
+
             <div className="space-y-8">
-              <div className="border-b pb-4">
-                <h2 className="text-2xl font-semibold">Your Vote as Managing Partner</h2>
-                {managerVote !== null && (
-                  <div className="mt-4 p-4 rounded-lg border border-neutral-200 bg-white">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="text-lg font-semibold">Managing Partner</h3>
-                        <p className="text-sm text-neutral-500">Your vote counts as 2</p>
-                      </div>
-                      <div className={`rounded-full px-3 py-1 text-sm font-medium ${
-                        managerVote
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
-                        {managerVote ? 'Invest' : 'Pass'}
-                      </div>
-                    </div>
-                    {managerReasoning && (
-                      <div className="mt-4">
-                        <h4 className="font-medium">Your Reasoning</h4>
-                        <p className="mt-1 text-neutral-600">{managerReasoning}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
               <h2 className="text-2xl font-semibold">VC Partner Evaluations</h2>
               {votes.map((vote, index) => (
                 <div
-                  key={index}
+                  key={vote.id}
                   className="rounded-lg border border-neutral-200 bg-white p-6"
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="text-lg font-semibold">{vote.vcName}</h3>
-                      <p className="text-sm text-neutral-500">
-                        Modeled after {vote.modeledAfter}
-                      </p>
+                      <h3 className="text-lg font-semibold">{vote.vote.vc_persona}</h3>
                     </div>
-                    <div
-                      className={`rounded-full px-3 py-1 text-sm font-medium ${
-                        vote.vote
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {vote.vote ? 'Invest' : 'Pass'}
+                    <div className={`rounded-full px-3 py-1 text-sm font-medium ${
+                      vote.vote.vote
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-red-100 text-red-700'
+                    }`}>
+                      {vote.vote.vote ? 'Invest' : 'Pass'}
                     </div>
                   </div>
-
                   <div className="mt-4">
                     <h4 className="font-medium">Reasoning</h4>
-                    <p className="mt-1 text-neutral-600">{vote.reasoning}</p>
+                    <p className="mt-1 text-neutral-600">{vote.vote.reasoning}</p>
                   </div>
-
-                  {vote.metadata.keyPoints.length > 0 && (
+                  {vote.metadata && (
                     <div className="mt-4">
                       <h4 className="font-medium">Key Points</h4>
-                      <ul className="mt-2 list-inside list-disc space-y-1 text-neutral-600">
-                        {vote.metadata.keyPoints.map((point, i) => (
-                          <li key={i}>{point}</li>
+                      <ul className="mt-2 list-disc pl-5 space-y-1">
+                        {vote.metadata.key_points.map((point, i) => (
+                          <li key={i} className="text-neutral-600">{point}</li>
                         ))}
                       </ul>
+                      {vote.metadata.investment_thesis && (
+                        <div className="mt-4">
+                          <h4 className="font-medium">Investment Thesis</h4>
+                          <p className="mt-1 text-neutral-600">
+                            {vote.metadata.investment_thesis}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
-
-                  {vote.metadata.investmentThesis && (
-                    <div className="mt-4">
-                      <h4 className="font-medium">Investment Thesis</h4>
-                      <p className="mt-1 text-neutral-600">
-                        {vote.metadata.investmentThesis}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="mt-4">
-                    <h4 className="font-medium">Confidence Level</h4>
-                    <div className="mt-2 h-2 w-full rounded-full bg-neutral-100">
-                      <div
-                        className="h-2 rounded-full bg-blue-500"
-                        style={{
-                          width: `${vote.metadata.confidence * 100}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
                 </div>
               ))}
             </div>
