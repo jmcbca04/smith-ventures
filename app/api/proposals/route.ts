@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '@/db';
 import { proposals } from '@/db/schema';
-import { EncryptedData } from '@/types/encryption';
+import { EncryptedData } from '@/lib/encryption';
 
 const proposalSchema = z.object({
   encrypted_data: z.string(),
