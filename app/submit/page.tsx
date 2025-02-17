@@ -7,36 +7,29 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import toast from 'react-hot-toast';
+import { EncryptionService } from '@/lib/client/encryption';
+import type { ProposalData } from '@/types/encryption';
 
 export default function SubmitPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    startupName: '',
+  const [formData, setFormData] = useState<ProposalData>({
+    startup_name: '',
     pitch: '',
   });
+  const [accessToken, setAccessToken] = useState<string>('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/proposals', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
+      const encryptionService = EncryptionService.getInstance();
+      const result = await encryptionService.submitProposal(formData);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Something went wrong');
-      }
-
-      toast.success('Proposal submitted successfully!');
-      router.push(`/proposal/${data.proposalId}`);
+      setAccessToken(result.token);
+      toast.success('Proposal submitted successfully! Save your access token to view results later.');
+      router.push(`/proposal/${result.proposal_id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to submit proposal');
     } finally {
@@ -61,11 +54,11 @@ export default function SubmitPage() {
             <Label htmlFor="startupName">Startup Name</Label>
             <Input
               id="startupName"
-              value={formData.startupName}
+              value={formData.startup_name}
               onChange={(e) =>
                 setFormData((prev) => ({
                   ...prev,
-                  startupName: e.target.value,
+                  startup_name: e.target.value,
                 }))
               }
               required
@@ -105,8 +98,32 @@ export default function SubmitPage() {
             {isSubmitting ? 'Submitting...' : 'Submit for Evaluation'}
           </Button>
 
+          {accessToken && (
+            <div className="mt-4 p-4 bg-neutral-50 rounded-lg border border-neutral-200">
+              <p className="text-sm font-medium text-neutral-900">Your Access Token</p>
+              <p className="mt-1 text-xs text-neutral-600">
+                Save this token to access your results later. Without it, you won't be able to view your proposal.
+              </p>
+              <div className="mt-2 p-2 bg-white rounded border border-neutral-300 font-mono text-sm break-all">
+                {accessToken}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 w-full"
+                onClick={() => {
+                  navigator.clipboard.writeText(accessToken);
+                  toast.success('Access token copied to clipboard');
+                }}
+              >
+                Copy to Clipboard
+              </Button>
+            </div>
+          )}
+
           <p className="mt-4 text-center text-sm text-neutral-500">
-            By submitting, you'll receive a unique link to view your results
+            Your data is end-to-end encrypted. Only you can access it with your unique token.
           </p>
         </form>
       </div>
