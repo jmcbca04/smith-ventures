@@ -23,8 +23,10 @@ interface DecryptedVote {
   vote: VCVoteData;
   metadata: {
     confidence: number;
+    confidence_explanation?: string;
     key_points: string[];
     investment_thesis?: string;
+    risks_and_recommendations?: string;
   };
 }
 
@@ -470,21 +472,35 @@ export default function ProposalPage() {
                   </div>
                   <div className="mt-4">
                     <h4 className="font-medium">Reasoning</h4>
-                    <p className="mt-1 text-neutral-600">{vote.vote.reasoning}</p>
+                    <p className="mt-1 text-neutral-600 whitespace-pre-wrap">{vote.vote.reasoning}</p>
                   </div>
                   {vote.metadata && (
-                    <div className="mt-4">
-                      <h4 className="font-medium">Key Points</h4>
-                      <ul className="mt-2 list-disc pl-5 space-y-1">
-                        {vote.metadata.key_points.map((point, i) => (
-                          <li key={i} className="text-neutral-600">{point}</li>
-                        ))}
-                      </ul>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <h4 className="font-medium">Key Points</h4>
+                        <ul className="mt-2 list-disc pl-5 space-y-1">
+                          {vote.metadata.key_points.map((point, i) => (
+                            <li key={i} className="text-neutral-600">{point}</li>
+                          ))}
+                        </ul>
+                      </div>
+
                       {vote.metadata.investment_thesis && (
-                        <div className="mt-4">
+                        <div>
                           <h4 className="font-medium">Investment Thesis</h4>
-                          <p className="mt-1 text-neutral-600">
+                          <p className="mt-1 text-neutral-600 whitespace-pre-wrap">
                             {vote.metadata.investment_thesis}
+                          </p>
+                        </div>
+                      )}
+
+                      {vote.metadata.risks_and_recommendations && (
+                        <div>
+                          <h4 className="font-medium">
+                            {vote.vote.vote ? 'Risks & Mitigations' : 'Recommendations'}
+                          </h4>
+                          <p className="mt-1 text-neutral-600 whitespace-pre-wrap">
+                            {vote.metadata.risks_and_recommendations}
                           </p>
                         </div>
                       )}

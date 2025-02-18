@@ -3,8 +3,8 @@ import { db } from '@/db';
 import { proposals, vcVotes } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
-import { vcPersonas } from '@/config/vc-personas';
-import { encryptDataNode } from '@/lib/server/encryption';
+import { evaluateProposal } from '@/lib/openai';
+import { decryptDataNode } from '@/lib/server/encryption';
 
 export async function POST(
   request: Request,
@@ -47,48 +47,29 @@ export async function POST(
       );
     }
 
-    // Generate test evaluations
-    const votes = await Promise.all(vcPersonas.map(async (persona) => {
-      const vote = Math.random() > 0.5 ? 'yes' : 'no';
-      
-      // Prepare vote data
-      const voteData = {
-        vc_persona: persona.name,
-        vote: vote === 'yes',
-        reasoning: `${persona.name} (${persona.focus.join(', ')}): ${vote === 'yes' ? 
-          `This proposal aligns with our investment focus in ${persona.focus[0]}.` : 
-          `This proposal doesn't quite match our investment criteria in ${persona.focus[0]}.`}`
-      };
+    // Decrypt the proposal data to pass to OpenAI
+    const proposalData = JSON.parse(
+      await decryptDataNode({
+        encrypted_data: proposal.encrypted_data,
+        iv: proposal.iv
+      },
+      key)
+    );
 
-      // Prepare metadata
-      const metadata = {
-        confidence: 0.8,
-        key_points: [
-          `Investment focus: ${persona.focus.join(', ')}`,
-          `Modeled after: ${persona.modeledAfter}`,
-          vote === 'yes' ? 'Strong market potential' : 'Market concerns'
-        ],
-        investment_thesis: vote === 'yes' ? 
-          `As a VC focused on ${persona.focus[0]}, we see strong potential in this venture.` : 
-          undefined
-      };
-
-      // Encrypt both vote data and metadata using the client's encryption key
-      const encryptedVote = await encryptDataNode(JSON.stringify(voteData), key);
-      const encryptedMetadata = await encryptDataNode(JSON.stringify(metadata), key);
-
-      return {
-        id: uuid(),
-        proposal_id: proposalId,
-        encrypted_data: encryptedVote.encrypted_data,
-        iv: encryptedVote.iv,
-        encrypted_metadata: encryptedMetadata.encrypted_data,
-        metadata_iv: encryptedMetadata.iv,
-        created_at: new Date(),
-      };
-    }));
+    // Get evaluations from OpenAI
+    const evaluations = await evaluateProposal(proposalData, key);
 
     // Store votes
+    const votes = evaluations.map(evaluation => ({
+      id: uuid(),
+      proposal_id: proposalId,
+      encrypted_data: evaluation.encrypted_data,
+      iv: evaluation.iv,
+      encrypted_metadata: evaluation.encrypted_metadata,
+      metadata_iv: evaluation.metadata_iv,
+      created_at: new Date(),
+    }));
+
     await db.insert(vcVotes).values(votes);
     console.log('Stored votes in database');
 

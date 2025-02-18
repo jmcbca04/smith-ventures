@@ -36,7 +36,9 @@ export interface EncryptedVCVote {
   created_at: Date;
   metadata: {
     confidence: number;
+    confidence_explanation?: string;
     key_points: string[];
     investment_thesis?: string;
+    risks_and_recommendations?: string;
   };
 } 
