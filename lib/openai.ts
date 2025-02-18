@@ -14,6 +14,31 @@ interface Evaluation {
   metadata_iv: string;
 }
 
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 1000
+): Promise<T> {
+  let retries = 0;
+  let delay = initialDelay;
+
+  while (true) {
+    try {
+      return await operation();
+    } catch (error) {
+      retries++;
+      if (retries >= maxRetries) {
+        throw error;
+      }
+
+      // Exponential backoff with jitter
+      delay = Math.min(delay * 2, 10000) * (0.5 + Math.random());
+      console.log(`Retry ${retries} after ${delay}ms`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
 export async function evaluateProposal(
   proposal: ProposalData,
   encryptionKey: string
@@ -28,11 +53,19 @@ export async function evaluateProposal(
 Startup: ${proposal.startup_name}
 Pitch: ${proposal.pitch}`;
 
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        max_tokens: 2000,
+      const response = await retryWithBackoff(async () => {
+        const result = await openai.chat.completions.create({
+          model: 'gpt-4-turbo-preview',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 2000,
+        });
+        
+        if (!result.choices[0].message.content) {
+          throw new Error('Empty response from OpenAI');
+        }
+        
+        return result;
       });
 
       const content = response.choices[0].message.content;

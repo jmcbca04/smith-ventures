@@ -83,3 +83,5 @@
 - 2024-02-17: Enhanced VC evaluation display with better formatting and structure
 - 2024-02-17: Improved text formatting in evaluation responses
 - 2024-02-17: Streamlined UI by removing confidence level display
+- 2024-02-17: Fixed production timeout issues with OpenAI integration
+- 2024-02-17: Added retry logic and better error handling for API calls
