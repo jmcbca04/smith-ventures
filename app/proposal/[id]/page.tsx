@@ -220,8 +220,6 @@ export default function ProposalPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
         },
         body: JSON.stringify({ accessToken: token })
       });
@@ -231,101 +229,57 @@ export default function ProposalPage() {
       }
       
       const evalResult = await evalResponse.json();
-      console.log('Evaluation request completed:', evalResult);
+      console.log('Evaluation response:', evalResult);
       
       if (!evalResult.success) {
         throw new Error(evalResult.message || 'Evaluation failed');
       }
 
-      // Wait for a short delay to ensure database changes are propagated
-      console.log('Waiting for database updates to complete...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Parse the access token and import the key
+      const { key } = parseAccessToken(token);
+      const cryptoKey = await importKey(key);
 
-      // Try up to 3 times to get the votes
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        console.log(`Attempt ${attempt}/3: Fetching evaluation results...`);
-        try {
-          const response = await fetch(`/api/proposals/${proposalId}`, {
-            headers: {
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache',
-              'If-None-Match': new Date().getTime().toString()
-            }
-          });
-          const data = (await response.json()) as APIResponse;
-          
-          console.log('Raw API response:', {
-            hasProposal: !!data.proposal,
-            proposalStatus: data.proposal?.status,
-            numVotes: data.votes?.length,
-          });
+      // Decrypt the proposal data
+      const decryptedProposal = JSON.parse(
+        await decryptData({
+          encrypted_data: evalResult.proposal.encrypted_data,
+          iv: evalResult.proposal.iv,
+        }, cryptoKey)
+      );
 
-          // Check both the status and votes
-          if (data.proposal.status === 'completed' && data.votes.length > 0) {
-            console.log('Valid votes found, decrypting...');
-            
-            // Decrypt votes using the access token
-            const { key } = parseAccessToken(token);
-            const cryptoKey = await importKey(key);
-            
-            const decryptedVotes: DecryptedVote[] = await Promise.all(
-              data.votes.map(async (vote: RawVote) => {
-                const voteData = await decryptData(
-                  { encrypted_data: vote.encrypted_data, iv: vote.iv },
-                  cryptoKey
-                );
-                const metadata = await decryptData(
-                  { encrypted_data: vote.encrypted_metadata, iv: vote.metadata_iv },
-                  cryptoKey
-                );
-                return {
-                  id: vote.id,
-                  vote: JSON.parse(voteData) as VCVoteData,
-                  metadata: JSON.parse(metadata)
-                };
-              })
-            );
+      // Add status and created_at from the response
+      decryptedProposal.status = evalResult.proposal.status;
+      decryptedProposal.created_at = evalResult.proposal.created_at;
 
-            console.log('Votes decrypted successfully:', decryptedVotes.length);
-            setVotes(decryptedVotes);
-            
-            // Set proposal data
-            const proposalData = await decryptData(
-              { encrypted_data: data.proposal.encrypted_data, iv: data.proposal.iv },
-              cryptoKey
-            );
-            setProposal({
-              ...JSON.parse(proposalData),
-              status: data.proposal.status,
-              created_at: data.proposal.created_at,
-            } as ProposalData);
-            
-            setIsEvaluating(false);
-            toast.success('Evaluation completed successfully!');
-            return;
-          }
+      // Set the decrypted proposal
+      setProposal(decryptedProposal);
 
-          if (attempt === 3) {
-            throw new Error('Failed to get valid evaluation results after multiple attempts');
-          }
+      // Decrypt the votes
+      const decryptedVotes = await Promise.all(
+        evalResult.votes.map(async (vote: any) => ({
+          id: vote.id,
+          vote: JSON.parse(
+            await decryptData({
+              encrypted_data: vote.encrypted_data,
+              iv: vote.iv,
+            }, cryptoKey)
+          ),
+          metadata: JSON.parse(
+            await decryptData({
+              encrypted_data: vote.encrypted_metadata,
+              iv: vote.metadata_iv,
+            }, cryptoKey)
+          ),
+        }))
+      );
 
-          console.log(`No valid votes found in attempt ${attempt}/3, waiting before retry...`);
-          const delay = Math.min(2000 * Math.pow(1.5, attempt - 1), 5000);
-          console.log(`Waiting ${Math.round(delay)}ms before next attempt...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } catch (error) {
-          console.error(`Error in attempt ${attempt}/3:`, error);
-          if (attempt === 3) throw error;
-          const delay = Math.min(2000 * Math.pow(1.5, attempt - 1), 5000);
-          console.log(`Error occurred, waiting ${Math.round(delay)}ms before retry...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-
-      throw new Error('Failed to get valid evaluation results after multiple attempts');
+      // Set the decrypted votes
+      setVotes(decryptedVotes);
+      setIsEvaluating(false);
+      toast.success('Evaluation completed successfully!');
     } catch (error) {
       console.error('Evaluation failed:', error);
-      toast.error('Failed to complete evaluation');
+      toast.error(error instanceof Error ? error.message : 'Failed to complete evaluation');
       setIsEvaluating(false);
     }
   };

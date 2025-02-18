@@ -34,14 +34,13 @@ export async function POST(
       );
     }
 
-    // Get the proposal to verify it exists
+    // Get the proposal
     const [proposal] = await db
       .select()
       .from(proposals)
       .where(eq(proposals.id, proposalId));
 
     if (!proposal) {
-      console.log('Proposal not found:', proposalId);
       return NextResponse.json(
         { success: false, message: 'Proposal not found' },
         { status: 404 }
@@ -89,15 +88,6 @@ export async function POST(
       };
     }));
 
-    console.log('Generated encrypted votes:', votes.map(v => ({
-      id: v.id,
-      hasEncryptedData: !!v.encrypted_data,
-      hasIv: !!v.iv,
-      hasEncryptedMetadata: !!v.encrypted_metadata,
-      hasMetadataIv: !!v.metadata_iv,
-      created_at: v.created_at
-    })));
-
     // Store votes
     await db.insert(vcVotes).values(votes);
     console.log('Stored votes in database');
@@ -110,36 +100,35 @@ export async function POST(
 
     console.log('Updated proposal status to completed');
 
-    // Verify changes
+    // Get the updated proposal
     const [updatedProposal] = await db
       .select()
       .from(proposals)
       .where(eq(proposals.id, proposalId));
 
-    const storedVotes = await db
-      .select()
-      .from(vcVotes)
-      .where(eq(vcVotes.proposal_id, proposalId));
-
-    console.log('Verification results:', {
-      proposal: {
-        id: updatedProposal.id,
-        status: updatedProposal.status,
-      },
-      numStoredVotes: storedVotes.length,
-    });
-
-    // Add delay to ensure changes are propagated
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
+    // Return the complete updated data
     return NextResponse.json({
       success: true,
-      voteIds: votes.map(v => v.id),
+      proposal: {
+        id: updatedProposal.id,
+        encrypted_data: updatedProposal.encrypted_data,
+        iv: updatedProposal.iv,
+        status: updatedProposal.status,
+        created_at: updatedProposal.created_at.toISOString(),
+      },
+      votes: votes.map(vote => ({
+        id: vote.id,
+        encrypted_data: vote.encrypted_data,
+        iv: vote.iv,
+        encrypted_metadata: vote.encrypted_metadata,
+        metadata_iv: vote.metadata_iv,
+        created_at: vote.created_at.toISOString()
+      }))
     });
   } catch (error) {
     console.error('Evaluation error:', error);
     return NextResponse.json(
-      { success: false, message: 'Internal server error' },
+      { success: false, message: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }
