@@ -23,26 +23,16 @@ export async function evaluateProposal(
 
   const evaluations = await Promise.all(
     vcPersonas.map(async (vcPersona) => {
-      const prompt = `You are ${vcPersona.name}, a venture capitalist modeled after ${
-        vcPersona.modeledAfter
-      }. You're known for ${vcPersona.focus.join(
-        ', '
-      )}. Please evaluate this startup proposal:
+      const prompt = `${vcPersona.evaluationPrompt}
 
 Startup: ${proposal.startup_name}
-Pitch: ${proposal.pitch}
-
-Provide your evaluation in the following format:
-1. Vote (yes/no)
-2. Reasoning
-3. Key points (bullet points)
-4. Investment thesis (if voting yes)
-5. Confidence level (0.0-1.0)`;
+Pitch: ${proposal.pitch}`;
 
       const response = await openai.chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.7,
+        max_tokens: 2000,
       });
 
       const content = response.choices[0].message.content;
@@ -64,44 +54,134 @@ Provide your evaluation in the following format:
         line.toLowerCase().includes('key points') || 
         line.match(/^3\.|^key points:/i)
       );
-      const reasoning = reasoningStartIndex >= 0 ? 
-        lines.slice(reasoningStartIndex + 1, keyPointsStartIndex > reasoningStartIndex ? keyPointsStartIndex : undefined)
-          .filter(line => !line.match(/^[0-9]\./) && !line.toLowerCase().includes('investment thesis'))
-          .join('\n')
-        : '';
 
-      // Find key points
+      // Process reasoning section, excluding section headers
+      const reasoningLines = lines.slice(
+        reasoningStartIndex + 1, 
+        keyPointsStartIndex > reasoningStartIndex ? keyPointsStartIndex : undefined
+      );
+
+      // Build structured reasoning, excluding section headers and bullet points
+      const reasoning = reasoningLines
+        .filter(line => {
+          // Exclude numbered points, section headers, and bullet points
+          const isNumberedPoint = line.match(/^[0-9]\./);
+          const isSectionHeader = line.match(/^\*[^•-].*\*$/); // Matches *Section Title* format
+          const isBulletPoint = line.trim().startsWith('•') || 
+                               line.trim().startsWith('-') || 
+                               (line.trim().startsWith('*') && line.trim().endsWith('*') && line.includes('•'));
+          return !isNumberedPoint && !isSectionHeader && !isBulletPoint;
+        })
+        .join('\n');
+
+      // Find key points - only include actual bullet points, not section headers
       const keyPoints = lines
-        .filter(line => 
-          line.trim().startsWith('•') || 
-          line.trim().startsWith('-') || 
-          line.trim().startsWith('*')
-        )
-        .map(line => line.trim().replace(/^[•\-*]\s*/, ''));
+        .filter(line => {
+          const isBulletPoint = line.trim().startsWith('•') || 
+                               line.trim().startsWith('-') || 
+                               line.trim().startsWith('* •') ||
+                               line.trim().startsWith('*');
+          const isHeader = line.match(/^\*[^•-].*\*$/);
+          return isBulletPoint && !isHeader;
+        })
+        .map(line => {
+          // Clean up the bullet points
+          return line.trim()
+            .replace(/^[•\-*]\s*/, '') // Remove bullet character
+            .replace(/^\* ?[•-]\s*/, '') // Remove "* •" format
+            .replace(/\*\*/g, '') // Remove all ** markers
+            .replace(/\*/g, '') // Remove all remaining * markers
+            .trim();
+        });
 
       // Find investment thesis
       const thesisStartIndex = lines.findIndex(line => 
         line.toLowerCase().includes('investment thesis') || 
         line.match(/^4\.|^thesis:/i)
       );
+      const risksStartIndex = lines.findIndex(line => 
+        line.toLowerCase().includes('risks') || 
+        line.toLowerCase().includes('risk analysis') ||
+        line.toLowerCase().includes('recommendations') ||
+        line.toLowerCase().includes('technical risk') ||
+        line.toLowerCase().includes('scaling roadmap') ||
+        line.match(/^5\.|^risks:/i)
+      );
+
+      // Process investment thesis, excluding section headers
+      const investmentThesis = vote && thesisStartIndex >= 0 ? 
+        lines.slice(
+          thesisStartIndex + 1, 
+          risksStartIndex > thesisStartIndex ? risksStartIndex : undefined
+        )
+        .filter(line => {
+          const isSectionHeader = line.match(/^\*[^•-].*\*$/);
+          const isNumberedPoint = line.match(/^[0-9]\./);
+          return !isSectionHeader && !isNumberedPoint;
+        })
+        .map(line => line.replace(/\*\*/g, '').replace(/\*/g, ''))
+        .join('\n')
+        .trim() : undefined;
+
+      // Find risks/recommendations section
       const confidenceStartIndex = lines.findIndex(line => 
         line.toLowerCase().includes('confidence') || 
-        line.match(/^5\.|^confidence:/i)
+        line.match(/^6\.|^confidence:/i)
       );
-      const investmentThesis = vote && thesisStartIndex >= 0 ? 
-        lines.slice(thesisStartIndex + 1, confidenceStartIndex > thesisStartIndex ? confidenceStartIndex : undefined)
-          .filter(line => !line.match(/^[0-9]\./) && !line.toLowerCase().includes('confidence'))
-          .join('\n')
-        : undefined;
 
-      // Find confidence
+      // Process risks section, excluding section headers
+      const risksSection = risksStartIndex >= 0 ?
+        lines.slice(
+          risksStartIndex + 1, 
+          confidenceStartIndex > risksStartIndex ? confidenceStartIndex : undefined
+        )
+        .filter(line => {
+          const isSectionHeader = line.match(/^\*[^•-].*\*$/);
+          const isNumberedPoint = line.match(/^[0-9]\./);
+          return !isSectionHeader && !isNumberedPoint;
+        })
+        .map(line => line.replace(/\*\*/g, '').replace(/\*/g, ''))
+        .join('\n')
+        .trim() : undefined;
+
+      // Find confidence with explanation
       const confidenceLine = lines.find(line => 
         line.toLowerCase().includes('confidence') || 
-        line.match(/^5\.|^confidence:/i)
+        line.match(/^6\.|^confidence:/i)
       );
-      const confidence = confidenceLine
-        ? parseFloat(confidenceLine.match(/\d+\.?\d*/)?.[0] || '0.7')
-        : 0.7;
+      
+      // Extract just the numerical confidence value
+      const confidenceMatch = confidenceLine?.match(/(\d+\.?\d*)/);
+      let confidence = 0.7; // Default confidence
+      
+      if (confidenceMatch) {
+        const rawValue = parseFloat(confidenceMatch[1]);
+        // If it's a decimal less than 1, convert to percentage
+        if (rawValue <= 1) {
+          confidence = rawValue;
+        } else if (rawValue <= 100) {
+          // If it's a percentage, convert to decimal
+          confidence = rawValue / 100;
+        }
+      }
+
+      // Validate confidence level based on vote
+      // If voting to invest, confidence should be at least 60%
+      // If voting to pass, confidence can be lower
+      if (vote && confidence < 0.6) {
+        confidence = 0.7; // Set a reasonable default for invest votes
+      } else if (!vote && confidence > 0.4) {
+        confidence = 0.3; // Set a reasonable default for pass votes
+      }
+      
+      // Extract explanation without the confidence level and label
+      const confidenceExplanation = confidenceLine
+        ?.replace(/^[^:]*:\s*/, '') // Remove everything before and including the colon
+        ?.replace(/\d+\.?\d*%?\s*-?\s*/, '') // Remove the confidence number and any dash
+        ?.replace(/confidence\s+level\s*:?\s*/i, '') // Remove "Confidence Level" text
+        ?.replace(/\*\*/g, '') // Remove all ** markers
+        ?.replace(/\*/g, '') // Remove all remaining * markers
+        ?.trim();
 
       // Create the vote data
       const voteData: VCVoteData = {
@@ -113,8 +193,10 @@ Provide your evaluation in the following format:
       // Create metadata
       const metadata = {
         confidence,
+        confidence_explanation: confidenceExplanation,
         key_points: keyPoints,
         investment_thesis: investmentThesis?.trim(),
+        risks_and_recommendations: risksSection?.trim(),
       };
 
       // Encrypt both vote data and metadata using Node's crypto
